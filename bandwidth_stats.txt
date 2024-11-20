@@ -1,0 +1,84 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <time.h>
+
+#define INTERFACE "enp0s3"   // Change this to your network interface
+#define LOG_INTERVAL 10    // Time interval in seconds for logging
+
+// Function to get transmitted and received bytes for a given network interface
+void get_network_usage(unsigned long long *rx_bytes, unsigned long long *tx_bytes) {
+    FILE *fp = fopen("/proc/net/dev", "r");
+    if (fp == NULL) {
+        perror("Error opening /proc/net/dev");
+        exit(EXIT_FAILURE);
+    }
+    cha
+r line[512];
+    // Skip the first two lines (headers)
+    fgets(line, sizeof(line), fp);
+    fgets(line, sizeof(line), fp);
+
+    // Read each line for interface stats
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, INTERFACE) != NULL) {
+            // Parse received (rx_bytes) and transmitted (tx_bytes) bytes
+            sscanf(line, "%*s %llu %*d %*d %*d %*d %*d %*d %*d %llu", rx_bytes, tx_bytes);
+            break;
+        }
+    }
+
+    fclose(fp);
+}
+
+// Function to log network data to a CSV file with a timestamp
+void log_data_to_csv(unsigned long long rx_bytes, unsigned long long tx_bytes) {
+    FILE *csv_file = fopen("network_stats.csv", "a");
+    if (csv_file == NULL) {
+        perror("Error opening CSV file");
+        exit(EXIT_FAILURE);
+    }
+
+    // Get current time for the log entry
+    time_t now = time(NULL);
+    struct tm *timeinfo = localtime(&now);
+
+    // Log timestamp, received bytes, and transmitted bytes to CSV
+    fprintf(csv_file, "%04d-%02d-%02d %02d:%02d:%02d,%llu,%llu\n",
+            timeinfo->tm_year + 1900, timeinfo->tm_mon + 1, timeinfo->tm_mday,
+            timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec,
+            rx_bytes, tx_bytes);
+
+    fclose(csv_file);
+}
+
+int main() {
+    unsigned long long rx_bytes, tx_bytes;
+
+    // Create or open the CSV file and write the header if it's the first time
+    FILE *csv_file = fopen("network_stats.csv", "r");
+    if (csv_file == NULL) {
+        csv_file = fopen("network_stats.csv", "w");
+        if (csv_file != NULL) {
+            fprintf(csv_file, "Timestamp,Received Bytes,Transmitted Bytes\n");
+            fclose(csv_file);
+        }
+    } else {
+        fclose(csv_file);
+    }
+
+    // Continuously log network statistics at regular intervals
+    while (1) {
+        get_network_usage(&rx_bytes, &tx_bytes);
+        log_data_to_csv(rx_bytes, tx_bytes);
+
+        // Print output to console for debugging (optional)
+        printf("Logged: Received = %llu bytes, Transmitted = %llu bytes\n", rx_bytes, tx_bytes);
+
+        // Sleep for the specified log interval
+        sleep(LOG_INTERVAL);
+    }
+
+    return 0;
+}
